@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -15,14 +17,6 @@ class ArticleData(BaseModel):
     metadata: DocumentMetadata = Field(default_factory=DocumentMetadata)
 
 
-class SourceLocator(BaseModel):
-    chunk_id: str
-    logical_section: str
-    start_offset: int
-    end_offset: int
-    context_snippet: str
-
-
 class DocumentChunk(BaseModel):
     chunk_id: str
     document_id: str
@@ -32,30 +26,22 @@ class DocumentChunk(BaseModel):
     end_offset: int
     metadata: dict = Field(default_factory=dict)
 
-    def to_locator(self) -> SourceLocator:
-        return SourceLocator(
-            chunk_id=self.chunk_id,
-            logical_section=self.logical_section,
-            start_offset=self.start_offset,
-            end_offset=self.end_offset,
-            context_snippet=self.text[:120],
-        )
-
 
 class VectorSearchResult(BaseModel):
     chunk: DocumentChunk
     score: float
 
 
-class Citation(BaseModel):
-    marker: str
-    locator: SourceLocator
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
 
 
 class AnswerResponse(BaseModel):
     document_id: str
+    thread_id: str = ""
     answer_text: str
-    citations: list[Citation] = Field(default_factory=list)
+    messages: list[ChatMessage] = Field(default_factory=list)
 
 
 class IngestionResult(BaseModel):

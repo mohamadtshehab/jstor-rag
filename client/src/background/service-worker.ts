@@ -55,20 +55,6 @@ async function handleMessage(
       }
 
       const answer: AnswerResponse = await queryArticle(docId, question);
-
-      if (answer.citations.length > 0) {
-        const [tab] = await chrome.tabs.query({
-          active: true,
-          currentWindow: true,
-        });
-        if (tab?.id) {
-          chrome.tabs.sendMessage(tab.id, {
-            type: "HIGHLIGHT_CITATIONS",
-            payload: answer.citations.map((c) => c.locator),
-          });
-        }
-      }
-
       return { type: "QUERY_RESULT", payload: answer };
     }
 

@@ -26,7 +26,7 @@ class ParsingEngine(IParsingEngine):
     """Semantic chunking for academic texts.
 
     Detects logical section boundaries, splits within sections at paragraph
-    breaks, and tracks character offsets so SourceLocators remain UI-agnostic.
+    breaks, and tracks character offsets.
     """
 
     def create_chunks(

@@ -1,11 +1,9 @@
 <script lang="ts">
-  import type { AnswerResponse } from "../../shared/types";
   import MessageBubble from "./MessageBubble.svelte";
 
   interface ChatMessage {
     role: "user" | "assistant";
     content: string;
-    citations?: AnswerResponse["citations"];
   }
 
   interface Props {
@@ -41,11 +39,11 @@
     {#if messages.length === 0}
       <div class="flex flex-col items-center justify-center h-full text-center text-slate-400">
         <p class="text-sm">Ask a question about the article.</p>
-        <p class="text-xs mt-1">Citations will highlight the source text on the page.</p>
+        <p class="text-xs mt-1">Ask about the article content.</p>
       </div>
     {:else}
       {#each messages as msg}
-        <MessageBubble role={msg.role} content={msg.content} citations={msg.citations} />
+        <MessageBubble role={msg.role} content={msg.content} />
       {/each}
     {/if}
   </div>

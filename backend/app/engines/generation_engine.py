@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-import re
-
 from ..contracts.dtos import (
     AnswerResponse,
-    Citation,
     CompletionRequest,
     DocumentChunk,
     EmbeddingRequest,
@@ -14,12 +11,8 @@ from ..contracts.interfaces import IGenerationEngine
 _SYSTEM_PROMPT = """\
 You are a research assistant analysing an academic article.
 Answer the question using ONLY the provided context chunks.
-Cite every claim using bracketed numbers like [1], [2], etc., corresponding
-to the chunk indices in the context below.
 If the context does not contain enough information, say so explicitly.
 Do NOT fabricate information."""
-
-_CITATION_RE = re.compile(r"\[(\d+)\]")
 
 
 class GenerationEngine(IGenerationEngine):
@@ -38,16 +31,12 @@ class GenerationEngine(IGenerationEngine):
         self, question: str, chunks: list[DocumentChunk]
     ) -> CompletionRequest:
         context_parts: list[str] = []
-        for i, chunk in enumerate(chunks):
-            header = f"[{i + 1}] Section: {chunk.logical_section}"
+        for chunk in chunks:
+            header = f"Section: {chunk.logical_section}"
             context_parts.append(f"{header}\n{chunk.text}")
 
         context_block = "\n\n---\n\n".join(context_parts)
-        prompt = (
-            f"Context:\n{context_block}\n\n"
-            f"Question: {question}\n\n"
-            "Answer (with citations):"
-        )
+        prompt = f"Context:\n{context_block}\n\nQuestion: {question}\n\nAnswer:"
 
         return CompletionRequest(
             prompt=prompt,
@@ -56,27 +45,23 @@ class GenerationEngine(IGenerationEngine):
             max_tokens=2048,
         )
 
+    def create_condense_request(self, question: str, history: str) -> CompletionRequest:
+        prompt = (
+            f"Given the conversation history:\n{history}\n\n"
+            f"And the follow-up question: {question}\n\n"
+            "Rephrase the follow-up question to be a standalone search query. "
+            "Do not answer the question, just rewrite it for semantic search."
+        )
+        return CompletionRequest(
+            prompt=prompt,
+            temperature=0.1,
+            max_tokens=256,
+        )
+
     def extract_citations(
         self, raw_response: str, chunks: list[DocumentChunk], document_id: str
     ) -> AnswerResponse:
-        markers = _CITATION_RE.findall(raw_response)
-        seen: set[int] = set()
-        citations: list[Citation] = []
-
-        for marker_str in markers:
-            idx = int(marker_str) - 1
-            if idx in seen or idx < 0 or idx >= len(chunks):
-                continue
-            seen.add(idx)
-            citations.append(
-                Citation(
-                    marker=f"[{marker_str}]",
-                    locator=chunks[idx].to_locator(),
-                )
-            )
-
         return AnswerResponse(
             document_id=document_id,
             answer_text=raw_response.strip(),
-            citations=citations,
         )

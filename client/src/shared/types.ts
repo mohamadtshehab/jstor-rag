@@ -1,20 +1,6 @@
-export interface SourceLocator {
-  chunkId: string;
-  logicalSection: string;
-  startOffset: number;
-  endOffset: number;
-  contextSnippet: string;
-}
-
-export interface Citation {
-  marker: string;
-  locator: SourceLocator;
-}
-
 export interface AnswerResponse {
   document_id: string;
   answer_text: string;
-  citations: Citation[];
 }
 
 export interface IngestionResult {
@@ -25,8 +11,6 @@ export interface IngestionResult {
 }
 
 export type MessageType =
-  | "HIGHLIGHT_CITATIONS"
-  | "CLEAR_HIGHLIGHTS"
   | "INGEST_ARTICLE"
   | "QUERY_ARTICLE"
   | "INGESTION_COMPLETE"

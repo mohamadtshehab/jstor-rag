@@ -7,7 +7,7 @@
   let documentId = $state<string | null>(null);
   let ingesting = $state(false);
   let error = $state("");
-  let messages = $state<Array<{ role: "user" | "assistant"; content: string; citations?: AnswerResponse["citations"] }>>([]);
+  let messages = $state<Array<{ role: "user" | "assistant"; content: string }>>([]);
 
   async function handleIngest() {
     ingesting = true;
@@ -34,8 +34,9 @@
         return;
       }
 
-      documentId = ingestResponse.payload.document_id;
-      articleTitle = ingestResponse.payload.article_title || "Untitled Article";
+      const payload = ingestResponse.payload as { document_id: string; article_title?: string };
+      documentId = payload.document_id;
+      articleTitle = payload.article_title ?? "Untitled Article";
     } catch (e) {
       error = (e as Error).message;
     } finally {
@@ -58,10 +59,7 @@
       }
 
       const answer = response.payload as AnswerResponse;
-      messages = [
-        ...messages,
-        { role: "assistant", content: answer.answer_text, citations: answer.citations },
-      ];
+      messages = [...messages, { role: "assistant", content: answer.answer_text }];
     } catch (e) {
       messages = [...messages, { role: "assistant", content: `Error: ${(e as Error).message}` }];
     }
@@ -69,8 +67,8 @@
 
   $effect(() => {
     chrome.storage.session.get(["documentId", "articleTitle"]).then((data) => {
-      if (data.documentId) documentId = data.documentId;
-      if (data.articleTitle) articleTitle = data.articleTitle;
+      documentId = (data.documentId as string | undefined) ?? null;
+      articleTitle = (data.articleTitle as string | undefined) ?? "";
     });
   });
 </script>

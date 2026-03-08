@@ -15,7 +15,6 @@ from .managers.ingestion_manager import IngestionManager
 from .managers.query_manager import QueryManager
 from .resource_access.ai_provider_access import AIProviderAccess
 from .resource_access.article_access import ArticleAccess
-from .resource_access.cache_access import CacheAccess
 from .resource_access.config_access import ConfigAccess
 from .resource_access.knowledge_store_access import KnowledgeStoreAccess
 from .resource_access.session_access import SessionAccess
@@ -40,12 +39,6 @@ def get_knowledge_store() -> KnowledgeStoreAccess:
 @lru_cache
 def get_article_access() -> ArticleAccess:
     return ArticleAccess(config=get_config())
-
-
-@lru_cache
-def get_cache() -> CacheAccess:
-    cfg = get_config()
-    return CacheAccess(ttl_seconds=cfg.settings.cache_ttl_seconds)
 
 
 @lru_cache
@@ -79,10 +72,10 @@ def get_ingestion_manager() -> IngestionManager:
     )
 
 
+@lru_cache
 def get_query_manager() -> QueryManager:
     return QueryManager(
         generation_engine=get_generation_engine(),
         ai_provider=get_ai_provider(),
         knowledge_store=get_knowledge_store(),
-        cache=get_cache(),
     )
