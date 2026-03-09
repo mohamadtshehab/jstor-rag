@@ -73,12 +73,30 @@
   });
 </script>
 
-<div class="flex flex-col h-screen">
-  <header class="flex items-center gap-2 px-4 py-3 border-b border-slate-700 bg-slate-900/80">
-    <div class="w-2 h-2 rounded-full" class:bg-green-500={!!documentId} class:bg-slate-500={!documentId}></div>
-    <h1 class="text-sm font-semibold tracking-tight truncate">
-      {articleTitle || "JSTOR RAG"}
-    </h1>
+<div class="flex flex-col h-screen" style="background: var(--bg-primary); color: var(--text-primary);">
+  <!-- Header -->
+  <header
+    class="flex items-center gap-2.5 px-4 py-3"
+    style="
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-secondary);
+    "
+  >
+    <!-- Status dot -->
+    <div
+      class="w-2 h-2 rounded-full flex-shrink-0"
+      style={documentId ? "background: var(--success);" : "background: var(--bg-tertiary);"}
+    ></div>
+
+    <!-- Title / wordmark -->
+    <div class="flex items-center gap-2 min-w-0 flex-1">
+      {#if articleTitle}
+        <span class="text-xs font-medium truncate" style="color: var(--text-secondary);">{articleTitle}</span>
+      {:else}
+        <span class="text-sm font-semibold tracking-tight" style="color: var(--accent);">JSTOR</span>
+        <span class="text-sm font-semibold tracking-tight">RAG</span>
+      {/if}
+    </div>
   </header>
 
   <main class="flex-1 overflow-hidden">

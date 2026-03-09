@@ -40,16 +40,16 @@ async def main() -> None:
         print("Browser window will stay open until you press Enter.\n")
     result = await access.fetch_article(
         url,
-        headless=False,
+        headless=True,
         do_login_flow=do_login,
-        keep_browser_open=True,
+        keep_browser_open=False,
     )
     print("--- Metadata ---")
     print(f"Title: {result.metadata.title}")
     print(f"Authors: {result.metadata.authors}")
     print(f"DOI: {result.metadata.doi}")
     print(f"\n--- Content ({len(result.text)} chars) ---")
-    print(result.text[:2000] + ("..." if len(result.text) > 2000 else ""))
+    print(result.text[:2000] + result.text[-2000:] + ("..." if len(result.text) > 2000 else ""))
 
 
 if __name__ == "__main__":
