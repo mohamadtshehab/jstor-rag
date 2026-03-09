@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 from ..contracts.dtos import IngestionResult
@@ -52,11 +53,18 @@ class IngestionManager(IIngestionManager):
                 article_title=article.metadata.title,
             )
 
+        texts = [
+            self._generation.create_embedding_request(c.text).text
+            for c in chunks
+        ]
+        batch_size = 20
         vectors: list[list[float]] = []
-        for chunk in chunks:
-            req = self._generation.create_embedding_request(chunk.text)
-            vec = await self._ai.fetch_vector(req)
-            vectors.append(vec)
+        for i in range(0, len(texts), batch_size):
+            if i > 0:
+                await asyncio.sleep(1.0)
+            batch = texts[i : i + batch_size]
+            batch_vecs = await self._ai.fetch_vectors_batch(batch)
+            vectors.extend(batch_vecs)
 
         await self._store.store_chunks(document_id, chunks, vectors)
 

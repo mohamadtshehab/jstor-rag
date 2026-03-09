@@ -9,11 +9,13 @@ dependencies = [
     "uvicorn[standard]",
     "pydantic-settings",
     "google-genai",
+    "groq",
     "chromadb",
     "httpx",
     "websockets",
     "playwright",
     "playwright-stealth",
+    "langgraph",
 ]
 
 [tool.hatch.build.targets.wheel]

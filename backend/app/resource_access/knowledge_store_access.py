@@ -32,7 +32,7 @@ class KnowledgeStoreAccess(IKnowledgeStoreAccess):
     ) -> None:
         self._collection.add(
             ids=[c.chunk_id for c in chunks],
-            embeddings=vectors,
+            embeddings=vectors,  # type: ignore[arg-type]
             documents=[c.text for c in chunks],
             metadatas=[
                 {
@@ -47,7 +47,7 @@ class KnowledgeStoreAccess(IKnowledgeStoreAccess):
         )
 
     async def search_similar(
-        self, document_id: str, query_vector: list[float], top_k: int = 5
+        self, document_id: str, query_vector: list[float], top_k: int = 1
     ) -> list[VectorSearchResult]:
         results = self._collection.query(
             query_embeddings=[query_vector],
@@ -65,13 +65,15 @@ class KnowledgeStoreAccess(IKnowledgeStoreAccess):
             text = results["documents"][0][i]  # type: ignore[index]
             distance = results["distances"][0][i]  # type: ignore[index]
 
+            so = meta.get("start_offset")
+            eo = meta.get("end_offset")
             chunk = DocumentChunk(
-                chunk_id=chunk_id,
+                chunk_id=str(chunk_id),
                 document_id=document_id,
-                text=text,
-                logical_section=meta.get("logical_section", ""),
-                start_offset=int(meta.get("start_offset", 0)),
-                end_offset=int(meta.get("end_offset", 0)),
+                text=str(text) if text is not None else "",
+                logical_section=str(meta.get("logical_section") or ""),
+                start_offset=int(so) if isinstance(so, (int, float)) else 0,
+                end_offset=int(eo) if isinstance(eo, (int, float)) else 0,
             )
             out.append(VectorSearchResult(chunk=chunk, score=1.0 - distance))
         return out
