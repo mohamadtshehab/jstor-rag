@@ -5,7 +5,10 @@ import uuid
 from collections.abc import Sequence
 from typing import Annotated, Any, Literal
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.tools import tool
+from langchain_core.runnables import RunnableConfig
+from pydantic import BaseModel, Field
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.constants import END, START
 from langgraph.graph import StateGraph
@@ -21,46 +24,23 @@ from ..contracts.interfaces import (
 )
 
 
-def _format_messages_for_prompt(messages: Sequence[BaseMessage]) -> str:
-    """Format message history for the completion prompt."""
-    if not messages:
-        return ""
-    parts: list[str] = []
-    for m in messages:
-        if isinstance(m, HumanMessage):
-            role = "User"
-        elif isinstance(m, AIMessage):
-            role = "Assistant"
-        else:
-            role = "User"  # Default fallback
-        
-        content = m.content
-        if isinstance(content, list):
-            # Handle complex content (list of blocks)
-            content = " ".join(
-                str(b.get("text", "")) if isinstance(b, dict) else str(b) 
-                for b in content
-            )
-        parts.append(f"{role}: {content}")
-        
-    return "Conversation:\n" + "\n".join(parts) + "\n\nAnswer the last user question using the context above."
-
-
 class QueryState(TypedDict):
     document_id: str
     messages: Annotated[list[BaseMessage], add_messages]
+    # Legacy fields (optional)
     answer: NotRequired[AnswerResponse | None]
     query_vector: NotRequired[list[float]]
     chunks: NotRequired[list[DocumentChunk]]
     raw_response: NotRequired[str]
 
 
+class SearchToolInput(BaseModel):
+    query: str = Field(description="The query string to search for in the document.")
+
 class QueryManager(IQueryManager):
     """Orchestrates the conversational RAG pipeline using LangGraph with Checkpointing.
-
-    State stores messages as BaseMessage objects. 
-    Graph: validate → embed → search → generate → extract → append_assistant.
-    The new user message is passed in initial state; add_messages merges it with checkpoint.
+    
+    Implements the agentic pattern: LLM -> Conditional -> Tool -> LLM.
     """
 
     def __init__(
@@ -72,6 +52,45 @@ class QueryManager(IQueryManager):
         self._generation = generation_engine
         self._ai = ai_provider
         self._store = knowledge_store
+        
+        # Define tools
+        @tool(args_schema=SearchToolInput)
+        async def search_tool(query: str, config: RunnableConfig) -> str:
+            """Search the document for relevant context and information.
+            
+            Args:
+                query: The query string to search for in the document.
+            """
+            doc_id = config.get("configurable", {}).get("document_id")
+            if not doc_id:
+                return "Error: Document ID context missing."
+                
+            # Embed query
+            embed_req = self._generation.create_embedding_request(query)
+            query_vector = await self._ai.fetch_vector(embed_req)
+            
+            # Search knowledge base
+            results = await self._store.search_similar(
+                doc_id, query_vector, top_k=5
+            )
+            
+            if not results:
+                return "No relevant information found in the document."
+                
+            # Format results
+            context_text = "\n\n".join(
+                f"[Chunk {i+1}]: {r.chunk.text}" 
+                for i, r in enumerate(results)
+            )
+            return context_text
+
+        self.tools = [search_tool]
+        self.tools_by_name = {t.name: t for t in self.tools}
+        
+        # Bind tools to model
+        self.model = self._ai.get_chat_model()
+        self.model_with_tools = self.model.bind_tools(self.tools, tool_choice="auto")
+        
         self._checkpointer = MemorySaver()
         self._graph = self._build_graph()
 
@@ -82,118 +101,77 @@ class QueryManager(IQueryManager):
     def _build_graph(self) -> Any:
         builder = StateGraph(QueryState)
 
-        builder.add_node("validate", self._node_validate)
-        builder.add_node("embed", self._node_embed)
-        builder.add_node("search", self._node_search)
-        builder.add_node("generate", self._node_generate)
-        builder.add_node("extract", self._node_extract)
-        builder.add_node("append_assistant", self._node_append_assistant)
+        builder.add_node("llm_call", self.llm_call)
+        builder.add_node("tool_node", self.tool_node)
 
-        builder.add_edge(START, "validate")
+        builder.add_edge(START, "llm_call")
         builder.add_conditional_edges(
-            "validate",
-            self._route_after_validate,
-            {"continue": "embed", "append": "append_assistant"},
+            "llm_call",
+            self.should_continue,
+            ["tool_node", END]
         )
-        builder.add_edge("embed", "search")
-        builder.add_conditional_edges(
-            "search",
-            self._route_after_search,
-            {"continue": "generate", "append": "append_assistant"},
-        )
-        builder.add_edge("generate", "extract")
-        builder.add_edge("extract", "append_assistant")
-        builder.add_edge("append_assistant", END)
+        builder.add_edge("tool_node", "llm_call")
 
         return builder.compile(checkpointer=self._checkpointer)
 
-    async def _node_validate(self, state: QueryState) -> dict:
-        document_id = state["document_id"]
-        exists = await self._store.exists(document_id)
-        if not exists:
-            return {
-                "answer": AnswerResponse(
-                    document_id=document_id,
-                    answer_text="Document not found. Please ingest it first.",
-                )
-            }
-        return {}
-
-    def _route_after_validate(
-        self, state: QueryState
-    ) -> Literal["continue", "append"]:
-        return "append" if state.get("answer") is not None else "continue"
-
-    async def _node_embed(self, state: QueryState) -> dict:
-        messages = state.get("messages") or []
-        last_user = ""
-        for m in reversed(messages):
-            if isinstance(m, HumanMessage):
-                content = m.content
-                if isinstance(content, str):
-                    last_user = content
-                elif isinstance(content, list):
-                    last_user = " ".join(str(x) for x in content)
-                break
-        embed_req = self._generation.create_embedding_request(last_user)
-        query_vector = await self._ai.fetch_vector(embed_req)
-        return {"query_vector": query_vector}
-
-    async def _node_search(self, state: QueryState) -> dict:
-        document_id = state["document_id"]
-        query_vector = state.get("query_vector") or []
-        results = await self._store.search_similar(
-            document_id, query_vector, top_k=5
+    async def llm_call(self, state: QueryState, config: RunnableConfig) -> dict:
+        """LLM decides whether to call a tool or not"""
+        messages = state["messages"]
+        
+        # Prepend system message
+        sys_msg = SystemMessage(
+            content="You are a helpful assistant. You are answering questions about a specific document. "
+                    "You have access to a 'search_tool' that allows you to search for relevant sections in the document. "
+                    "Use this tool to find information before answering user questions. "
         )
-        if not results:
-            return {
-                "answer": AnswerResponse(
-                    document_id=document_id,
-                    answer_text="No relevant content found for this question.",
-                )
-            }
-        return {"chunks": [r.chunk for r in results]}
+        
+        # Invoke model
+        response = await self.model_with_tools.ainvoke([sys_msg] + messages, config)
+        return {"messages": [response]}
 
-    def _route_after_search(
-        self, state: QueryState
-    ) -> Literal["continue", "append"]:
-        return "append" if state.get("answer") is not None else "continue"
+    async def tool_node(self, state: QueryState, config: RunnableConfig) -> dict:
+        """Performs the tool call"""
+        result = []
+        last_message = state["messages"][-1]
+        
+        if not isinstance(last_message, AIMessage):
+             raise ValueError("Last message must be an AI message to contain tool calls.")
+        
+        for tool_call in last_message.tool_calls:
+            tool = self.tools_by_name[tool_call["name"]]
+            # Pass config to tool execution so it can access document_id
+            observation = await tool.ainvoke(tool_call["args"], config=config)
+            result.append(ToolMessage(content=str(observation), tool_call_id=tool_call["id"]))
+            
+        return {"messages": result}
 
-    async def _node_generate(self, state: QueryState) -> dict:
-        chunks = state.get("chunks") or []
-        messages = state.get("messages") or []
-        conversation_prompt = _format_messages_for_prompt(messages)
-        completion_req = self._generation.create_completion_request(
-            conversation_prompt, chunks
-        )
-        raw_response = await self._ai.fetch_completion(completion_req)
-        return {"raw_response": raw_response}
+    def should_continue(self, state: QueryState) -> Literal["tool_node", "__end__"]:
+        """Decide if we should continue the loop or stop based upon whether the LLM made a tool call"""
+        messages = state["messages"]
+        last_message = messages[-1]
 
-    async def _node_extract(self, state: QueryState) -> dict:
-        raw_response = state.get("raw_response") or ""
-        chunks = state.get("chunks") or []
-        answer = self._generation.extract_citations(
-            raw_response, chunks, state["document_id"]
-        )
-        return {"answer": answer}
+        # If the LLM makes a tool call, then perform an action
+        if isinstance(last_message, AIMessage) and last_message.tool_calls:
+            return "tool_node"
 
-    async def _node_append_assistant(self, state: QueryState) -> dict:
-        """Append the assistant response to messages."""
-        answer = state.get("answer")
-        if answer is not None:
-            return {
-                "messages": [AIMessage(content=answer.answer_text)],
-            }
-        return {}
+        # Otherwise, we stop (reply to the user)
+        return "__end__"
 
     async def query_document(
         self,
         document_id: str,
         question: str,
     ) -> AnswerResponse:
-        # Use document_id as thread_id as requested
+        # Use document_id as thread_id
         actual_thread_id = document_id
-        config = {"configurable": {"thread_id": actual_thread_id}}
+        
+        # Config including document_id for tools
+        config = {
+            "configurable": {
+                "thread_id": actual_thread_id,
+                "document_id": document_id
+            }
+        }
         
         initial: dict[str, Any] = {
             "document_id": document_id,
@@ -202,14 +180,22 @@ class QueryManager(IQueryManager):
         
         result = await self._graph.ainvoke(initial, config=config)
 
-        answer = result.get("answer")
         state_messages = result.get("messages") or []
         
+        # Convert to ChatMessage list for DTO
         chat_messages: list[ChatMessage] = []
+        last_answer_text = ""
+        
         for m in state_messages:
             role = "user"
             if isinstance(m, AIMessage):
                 role = "assistant"
+                if m.content:
+                    last_answer_text = str(m.content)
+            elif isinstance(m, HumanMessage):
+                role = "user"
+            elif isinstance(m, ToolMessage):
+                continue # Skip tool messages in final output if desired, or map to 'system'
             
             content = m.content
             if isinstance(content, list):
@@ -217,17 +203,9 @@ class QueryManager(IQueryManager):
             
             chat_messages.append(ChatMessage(role=role, content=str(content)))
 
-        if answer is None:
-            return AnswerResponse(
-                document_id=document_id,
-                thread_id=actual_thread_id,
-                answer_text="An error occurred while processing your question.",
-                messages=chat_messages,
-            )
-        
         return AnswerResponse(
-            document_id=answer.document_id,
+            document_id=document_id,
             thread_id=actual_thread_id,
-            answer_text=answer.answer_text,
+            answer_text=last_answer_text or "No answer generated.",
             messages=chat_messages,
         )

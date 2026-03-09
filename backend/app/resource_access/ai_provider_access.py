@@ -6,6 +6,8 @@ from typing import Any
 from google import genai
 from groq import AsyncGroq, RateLimitError
 
+from langchain_core.language_models import BaseChatModel
+from langchain_groq import ChatGroq
 from ..contracts.dtos import CompletionRequest, EmbeddingRequest
 from ..contracts.interfaces import IAIProviderAccess
 from .config_access import ConfigAccess
@@ -26,6 +28,14 @@ class AIProviderAccess(IAIProviderAccess):
         self._groq = AsyncGroq(api_key=settings.groq_api_key)
         self._embedding_model = settings.embedding_model
         self._generation_model = settings.generation_model
+        self._groq_api_key = settings.groq_api_key
+
+    def get_chat_model(self) -> BaseChatModel:
+        return ChatGroq(
+            model=self._generation_model,
+            api_key=self._groq_api_key,
+            temperature=0,
+        )
 
     async def fetch_vector(self, request: EmbeddingRequest) -> list[float]:
         response = await self._gemini.aio.models.embed_content(

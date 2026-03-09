@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langchain_core.language_models import BaseChatModel
+
 from .dtos import (
     AnswerResponse,
     ArticleData,
@@ -86,6 +89,9 @@ class ISessionAccess(ABC):
 
 
 class IAIProviderAccess(ABC):
+    @abstractmethod
+    def get_chat_model(self) -> BaseChatModel: ...
+
     @abstractmethod
     async def fetch_vector(self, request: EmbeddingRequest) -> list[float]: ...
 
