@@ -3,8 +3,7 @@ from __future__ import annotations
 import chromadb
 
 from ..contracts.dtos import DocumentChunk, VectorSearchResult
-from ..contracts.interfaces import IKnowledgeStoreAccess
-from .config_access import ConfigAccess
+from ..contracts.interfaces import IConfigAccess, IKnowledgeStoreAccess
 
 _COLLECTION = "jstor_chunks"
 
@@ -16,8 +15,8 @@ class KnowledgeStoreAccess(IKnowledgeStoreAccess):
     here.  The rest of the system sees only StoreChunks / SearchSimilar / Exists.
     """
 
-    def __init__(self, config: ConfigAccess) -> None:
-        persist_dir = config.settings.chroma_persist_dir
+    def __init__(self, config: IConfigAccess) -> None:
+        persist_dir = config.read_store_config().chroma_persist_dir
         self._client = chromadb.PersistentClient(path=persist_dir)
         self._collection = self._client.get_or_create_collection(
             name=_COLLECTION,

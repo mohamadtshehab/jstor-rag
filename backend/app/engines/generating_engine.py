@@ -6,22 +6,30 @@ from ..contracts.dtos import (
     DocumentChunk,
     EmbeddingRequest,
 )
-from ..contracts.interfaces import IGenerationEngine
+from ..contracts.interfaces import IGeneratingEngine
 
-_SYSTEM_PROMPT = """\
+_RAG_SYSTEM_PROMPT = """\
 You are a research assistant analysing an academic article.
 Answer the question using ONLY the provided context chunks.
 If the context does not contain enough information, say so explicitly.
 Do NOT fabricate information."""
 
+_CONDENSE_INSTRUCTION = (
+    "Rephrase the follow-up question to be a standalone search query. "
+    "Do not answer the question, just rewrite it for semantic search."
+)
 
-class GenerationEngine(IGenerationEngine):
+
+class GeneratingEngine(IGeneratingEngine):
     """Pure business logic for AI interactions.
 
     Produces domain-level intermediate representations (EmbeddingRequest,
-    CompletionRequest).  Knows nothing about Gemini, OpenAI, or any
+    CompletionRequest).  Knows nothing about Gemini, Groq, or any
     provider-specific payload format.
     """
+
+    def create_rag_system_prompt(self) -> str:
+        return _RAG_SYSTEM_PROMPT
 
     def create_embedding_request(self, text: str) -> EmbeddingRequest:
         cleaned = " ".join(text.split())
@@ -40,7 +48,7 @@ class GenerationEngine(IGenerationEngine):
 
         return CompletionRequest(
             prompt=prompt,
-            system_instruction=_SYSTEM_PROMPT,
+            system_instruction=_RAG_SYSTEM_PROMPT,
             temperature=0.3,
             max_tokens=2048,
         )
@@ -49,8 +57,7 @@ class GenerationEngine(IGenerationEngine):
         prompt = (
             f"Given the conversation history:\n{history}\n\n"
             f"And the follow-up question: {question}\n\n"
-            "Rephrase the follow-up question to be a standalone search query. "
-            "Do not answer the question, just rewrite it for semantic search."
+            f"{_CONDENSE_INSTRUCTION}"
         )
         return CompletionRequest(
             prompt=prompt,

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.language_models import BaseChatModel
 
 from .dtos import (
+    AIProviderConfig,
     AnswerResponse,
     ArticleData,
     ChatMessage,
@@ -14,6 +14,9 @@ from .dtos import (
     DocumentMetadata,
     EmbeddingRequest,
     IngestionResult,
+    ScraperConfig,
+    ServerConfig,
+    StoreConfig,
     VectorSearchResult,
 )
 
@@ -27,8 +30,14 @@ class IParsingEngine(ABC):
         self, text: str, document_id: str, metadata: DocumentMetadata
     ) -> list[DocumentChunk]: ...
 
+    @abstractmethod
+    def detect_sections(self, text: str) -> list[str]: ...
 
-class IGenerationEngine(ABC):
+    @abstractmethod
+    def estimate_chunk_count(self, text: str) -> int: ...
+
+
+class IGeneratingEngine(ABC):
     @abstractmethod
     def create_embedding_request(self, text: str) -> EmbeddingRequest: ...
 
@@ -45,6 +54,9 @@ class IGenerationEngine(ABC):
         self, raw_response: str, chunks: list[DocumentChunk], document_id: str
     ) -> AnswerResponse: ...
 
+    @abstractmethod
+    def create_rag_system_prompt(self) -> str: ...
+
 
 # ── Resource Access ──────────────────────────────────────────────────────────
 
@@ -52,6 +64,12 @@ class IGenerationEngine(ABC):
 class IArticleAccess(ABC):
     @abstractmethod
     async def fetch_article(self, url: str) -> ArticleData: ...
+
+    @abstractmethod
+    def validate_url(self, url: str) -> bool: ...
+
+    @abstractmethod
+    async def fetch_metadata(self, url: str) -> DocumentMetadata: ...
 
 
 class IKnowledgeStoreAccess(ABC):
@@ -95,11 +113,12 @@ class IAIProviderAccess(ABC):
     @abstractmethod
     async def fetch_vector(self, request: EmbeddingRequest) -> list[float]: ...
 
-    async def fetch_vectors_batch(self, texts: list[str]) -> list[list[float]]:
-        """Optional: embed multiple texts in one call. Default: sequential fetch_vector."""
+    async def fetch_vectors_batch(
+        self, requests: list[EmbeddingRequest]
+    ) -> list[list[float]]:
+        """Default: sequential fetch_vector. Implementations may override for batch API efficiency."""
         result: list[list[float]] = []
-        for t in texts:
-            req = EmbeddingRequest(text=t)
+        for req in requests:
             result.append(await self.fetch_vector(req))
         return result
 
@@ -109,7 +128,16 @@ class IAIProviderAccess(ABC):
 
 class IConfigAccess(ABC):
     @abstractmethod
-    def get(self, key: str, default: str = "") -> str: ...
+    def read_ai_config(self) -> AIProviderConfig: ...
+
+    @abstractmethod
+    def read_store_config(self) -> StoreConfig: ...
+
+    @abstractmethod
+    def read_scraper_config(self) -> ScraperConfig: ...
+
+    @abstractmethod
+    def read_server_config(self) -> ServerConfig: ...
 
 
 # ── Utilities ────────────────────────────────────────────────────────────────
@@ -130,6 +158,12 @@ class IIngestionManager(ABC):
     @abstractmethod
     async def ingest_document(self, url: str) -> IngestionResult: ...
 
+    @abstractmethod
+    async def delete_document(self, document_id: str) -> None: ...
+
+    @abstractmethod
+    async def check_document(self, document_id: str) -> bool: ...
+
 
 class IQueryManager(ABC):
     @abstractmethod
@@ -138,3 +172,9 @@ class IQueryManager(ABC):
         document_id: str,
         question: str,
     ) -> AnswerResponse: ...
+
+    @abstractmethod
+    async def clear_conversation(self, document_id: str) -> None: ...
+
+    @abstractmethod
+    def get_graph_png(self) -> bytes: ...

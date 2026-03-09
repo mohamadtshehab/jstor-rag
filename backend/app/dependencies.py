@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from .engines.generation_engine import GenerationEngine
+from .engines.generating_engine import GeneratingEngine
 from .engines.parsing_engine import ParsingEngine
 from .managers.ingestion_manager import IngestionManager
 from .managers.query_manager import QueryManager
@@ -57,15 +57,15 @@ def get_parsing_engine() -> ParsingEngine:
 
 
 @lru_cache
-def get_generation_engine() -> GenerationEngine:
-    return GenerationEngine()
+def get_generating_engine() -> GeneratingEngine:
+    return GeneratingEngine()
 
 
 def get_ingestion_manager() -> IngestionManager:
     return IngestionManager(
         article_access=get_article_access(),
         parsing_engine=get_parsing_engine(),
-        generation_engine=get_generation_engine(),
+        generation_engine=get_generating_engine(),
         ai_provider=get_ai_provider(),
         knowledge_store=get_knowledge_store(),
         notification=get_notification(),
@@ -75,7 +75,7 @@ def get_ingestion_manager() -> IngestionManager:
 @lru_cache
 def get_query_manager() -> QueryManager:
     return QueryManager(
-        generation_engine=get_generation_engine(),
+        generation_engine=get_generating_engine(),
         ai_provider=get_ai_provider(),
         knowledge_store=get_knowledge_store(),
     )

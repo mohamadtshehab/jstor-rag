@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import hashlib
-import uuid
-from collections.abc import Sequence
 from typing import Annotated, Any, Literal
+from collections.abc import Sequence
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
@@ -18,7 +16,7 @@ from typing_extensions import NotRequired, TypedDict
 from ..contracts.dtos import AnswerResponse, ChatMessage, DocumentChunk
 from ..contracts.interfaces import (
     IAIProviderAccess,
-    IGenerationEngine,
+    IGeneratingEngine,
     IKnowledgeStoreAccess,
     IQueryManager,
 )
@@ -27,7 +25,6 @@ from ..contracts.interfaces import (
 class QueryState(TypedDict):
     document_id: str
     messages: Annotated[list[BaseMessage], add_messages]
-    # Legacy fields (optional)
     answer: NotRequired[AnswerResponse | None]
     query_vector: NotRequired[list[float]]
     chunks: NotRequired[list[DocumentChunk]]
@@ -39,58 +36,53 @@ class SearchToolInput(BaseModel):
 
 class QueryManager(IQueryManager):
     """Orchestrates the conversational RAG pipeline using LangGraph with Checkpointing.
-    
+
     Implements the agentic pattern: LLM -> Conditional -> Tool -> LLM.
     """
 
     def __init__(
         self,
-        generation_engine: IGenerationEngine,
+        generation_engine: IGeneratingEngine,
         ai_provider: IAIProviderAccess,
         knowledge_store: IKnowledgeStoreAccess,
     ) -> None:
         self._generation = generation_engine
         self._ai = ai_provider
         self._store = knowledge_store
-        
-        # Define tools
+
         @tool(args_schema=SearchToolInput)
         async def search_tool(query: str, config: RunnableConfig) -> str:
             """Search the document for relevant context and information.
-            
+
             Args:
                 query: The query string to search for in the document.
             """
             doc_id = config.get("configurable", {}).get("document_id")
             if not doc_id:
                 return "Error: Document ID context missing."
-                
-            # Embed query
+
             embed_req = self._generation.create_embedding_request(query)
             query_vector = await self._ai.fetch_vector(embed_req)
-            
-            # Search knowledge base
+
             results = await self._store.search_similar(
                 doc_id, query_vector, top_k=5
             )
-            
+
             if not results:
                 return "No relevant information found in the document."
-                
-            # Format results
+
             context_text = "\n\n".join(
-                f"[Chunk {i+1}]: {r.chunk.text}" 
+                f"[Chunk {i+1}]: {r.chunk.text}"
                 for i, r in enumerate(results)
             )
             return context_text
 
         self.tools = [search_tool]
         self.tools_by_name = {t.name: t for t in self.tools}
-        
-        # Bind tools to model
+
         self.model = self._ai.get_chat_model()
         self.model_with_tools = self.model.bind_tools(self.tools, tool_choice="auto")
-        
+
         self._checkpointer = MemorySaver()
         self._graph = self._build_graph()
 
@@ -115,77 +107,70 @@ class QueryManager(IQueryManager):
         return builder.compile(checkpointer=self._checkpointer)
 
     async def llm_call(self, state: QueryState, config: RunnableConfig) -> dict:
-        """LLM decides whether to call a tool or not"""
+        """LLM decides whether to call a tool or not."""
         messages = state["messages"]
-        
-        # Prepend system message
-        sys_msg = SystemMessage(
-            content="You are a helpful assistant. You are answering questions about a specific document. "
-                    "You have access to a 'search_tool' that allows you to search for relevant sections in the document. "
-                    "Use this tool to find information before answering user questions. "
-        )
-        
-        # Invoke model
+        sys_msg = SystemMessage(content=self._generation.create_rag_system_prompt())
         response = await self.model_with_tools.ainvoke([sys_msg] + messages, config)
         return {"messages": [response]}
 
     async def tool_node(self, state: QueryState, config: RunnableConfig) -> dict:
-        """Performs the tool call"""
+        """Performs the tool call."""
         result = []
         last_message = state["messages"][-1]
-        
+
         if not isinstance(last_message, AIMessage):
-             raise ValueError("Last message must be an AI message to contain tool calls.")
-        
+            raise ValueError("Last message must be an AI message to contain tool calls.")
+
         for tool_call in last_message.tool_calls:
             tool = self.tools_by_name[tool_call["name"]]
-            # Pass config to tool execution so it can access document_id
             observation = await tool.ainvoke(tool_call["args"], config=config)
             result.append(ToolMessage(content=str(observation), tool_call_id=tool_call["id"]))
-            
+
         return {"messages": result}
 
     def should_continue(self, state: QueryState) -> Literal["tool_node", "__end__"]:
-        """Decide if we should continue the loop or stop based upon whether the LLM made a tool call"""
-        messages = state["messages"]
-        last_message = messages[-1]
-
-        # If the LLM makes a tool call, then perform an action
+        """Decide whether to loop through the tool or stop."""
+        last_message = state["messages"][-1]
         if isinstance(last_message, AIMessage) and last_message.tool_calls:
             return "tool_node"
-
-        # Otherwise, we stop (reply to the user)
         return "__end__"
+
+    async def clear_conversation(self, document_id: str) -> None:
+        """Discard all checkpointed state for the given document thread."""
+        thread_id = document_id
+        keys_to_delete = [
+            key for key in self._checkpointer.storage
+            if key[0] == thread_id
+        ]
+        for key in keys_to_delete:
+            del self._checkpointer.storage[key]
 
     async def query_document(
         self,
         document_id: str,
         question: str,
     ) -> AnswerResponse:
-        # Use document_id as thread_id
         actual_thread_id = document_id
-        
-        # Config including document_id for tools
+
         config = {
             "configurable": {
                 "thread_id": actual_thread_id,
-                "document_id": document_id
+                "document_id": document_id,
             }
         }
-        
+
         initial: dict[str, Any] = {
             "document_id": document_id,
             "messages": [HumanMessage(content=question)],
         }
-        
+
         result = await self._graph.ainvoke(initial, config=config)
 
         state_messages = result.get("messages") or []
-        
-        # Convert to ChatMessage list for DTO
+
         chat_messages: list[ChatMessage] = []
         last_answer_text = ""
-        
+
         for m in state_messages:
             role = "user"
             if isinstance(m, AIMessage):
@@ -195,12 +180,12 @@ class QueryManager(IQueryManager):
             elif isinstance(m, HumanMessage):
                 role = "user"
             elif isinstance(m, ToolMessage):
-                continue # Skip tool messages in final output if desired, or map to 'system'
-            
+                continue
+
             content = m.content
             if isinstance(content, list):
-                 content = " ".join(str(x) for x in content)
-            
+                content = " ".join(str(x) for x in content)
+
             chat_messages.append(ChatMessage(role=role, content=str(content)))
 
         return AnswerResponse(
