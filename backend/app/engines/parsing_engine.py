@@ -43,6 +43,37 @@ class ParsingEngine(IParsingEngine):
 
         return chunks
 
+    def detect_sections(self, text: str) -> list[str]:
+        """Return the ordered list of section names found in the text."""
+        matches = list(_SECTION_PATTERN.finditer(text))
+        if not matches:
+            return ["Body"]
+        names: list[str] = []
+        if matches[0].start() > 0 and text[: matches[0].start()].strip():
+            names.append("Preamble")
+        names.extend(m.group().strip().rstrip(":") for m in matches)
+        return names
+
+    def estimate_chunk_count(self, text: str) -> int:
+        """Estimate how many chunks would be produced without allocating them."""
+        sections = self._split_sections(text)
+        total = 0
+        for _, section_text, _ in sections:
+            if len(section_text) <= _MAX_CHUNK_SIZE:
+                total += 1
+            else:
+                paragraphs = [p.strip() for p in re.split(r"\n\s*\n", section_text) if p.strip()]
+                current_len = 0
+                for para in paragraphs:
+                    if current_len + len(para) + 1 > _MAX_CHUNK_SIZE and current_len:
+                        total += 1
+                        current_len = min(len(para), _CHUNK_OVERLAP) + len(para)
+                    else:
+                        current_len += len(para) + (1 if current_len else 0)
+                if current_len:
+                    total += 1
+        return total
+
     def _split_sections(
         self, text: str
     ) -> list[tuple[str, str, int]]:

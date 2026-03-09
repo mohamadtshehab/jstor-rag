@@ -7,7 +7,7 @@ from ..contracts.dtos import IngestionResult
 from ..contracts.interfaces import (
     IArticleAccess,
     IAIProviderAccess,
-    IGenerationEngine,
+    IGeneratingEngine,
     IIngestionManager,
     IKnowledgeStoreAccess,
     INotificationUtility,
@@ -26,7 +26,7 @@ class IngestionManager(IIngestionManager):
         self,
         article_access: IArticleAccess,
         parsing_engine: IParsingEngine,
-        generation_engine: IGenerationEngine,
+        generation_engine: IGeneratingEngine,
         ai_provider: IAIProviderAccess,
         knowledge_store: IKnowledgeStoreAccess,
         notification: INotificationUtility,
@@ -53,17 +53,17 @@ class IngestionManager(IIngestionManager):
                 article_title=article.metadata.title,
             )
 
-        texts = [
-            self._generation.create_embedding_request(c.text).text
-            for c in chunks
+        embed_requests = [
+            self._generation.create_embedding_request(c.text) for c in chunks
         ]
         batch_size = 20
         vectors: list[list[float]] = []
-        for i in range(0, len(texts), batch_size):
+        for i in range(0, len(embed_requests), batch_size):
             if i > 0:
                 await asyncio.sleep(1.0)
-            batch = texts[i : i + batch_size]
-            batch_vecs = await self._ai.fetch_vectors_batch(batch)
+            batch_vecs = await self._ai.fetch_vectors_batch(
+                embed_requests[i : i + batch_size]
+            )
             vectors.extend(batch_vecs)
 
         await self._store.store_chunks(document_id, chunks, vectors)
@@ -79,3 +79,9 @@ class IngestionManager(IIngestionManager):
             status="ready",
             article_title=article.metadata.title,
         )
+
+    async def delete_document(self, document_id: str) -> None:
+        await self._store.delete(document_id)
+
+    async def check_document(self, document_id: str) -> bool:
+        return await self._store.exists(document_id)

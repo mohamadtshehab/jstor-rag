@@ -4,15 +4,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 
 from ..contracts.dtos import AnswerResponse, QueryPayload
+from ..contracts.interfaces import IQueryManager
 from ..dependencies import get_query_manager
-from ..managers.query_manager import QueryManager
 
 router = APIRouter(prefix="/query", tags=["Query"])
 
 
 @router.get("/graph.png", response_class=Response)
 async def get_graph_png(
-    manager: QueryManager = Depends(get_query_manager),
+    manager: IQueryManager = Depends(get_query_manager),
 ) -> Response:
     """Return a PNG visualization of the LangGraph (nodes and routes)."""
     png_bytes = manager.get_graph_png()
@@ -22,7 +22,7 @@ async def get_graph_png(
 @router.post("", response_model=AnswerResponse)
 async def query_document(
     payload: QueryPayload,
-    manager: QueryManager = Depends(get_query_manager),
+    manager: IQueryManager = Depends(get_query_manager),
 ) -> AnswerResponse:
     if not payload.question.strip():
         raise HTTPException(status_code=422, detail="Question is empty.")

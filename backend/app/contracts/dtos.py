@@ -69,3 +69,30 @@ class IngestPayload(BaseModel):
 class QueryPayload(BaseModel):
     document_id: str
     question: str
+
+
+# ── Config group DTOs ─────────────────────────────────────────────────────────
+
+
+class AIProviderConfig(BaseModel):
+    gemini_api_key: str
+    groq_api_key: str
+    embedding_model: str
+    generation_model: str
+
+
+class StoreConfig(BaseModel):
+    chroma_persist_dir: str
+
+
+class ScraperConfig(BaseModel):
+    playwright_channel: str
+    playwright_state_path: str
+    playwright_user_data_dir: str
+    login_email: str
+    login_password: str
+
+
+class ServerConfig(BaseModel):
+    host: str
+    port: int

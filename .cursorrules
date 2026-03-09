@@ -1,0 +1,16 @@
+---
+description: Apply these rules when creating new modules or refactoring logic
+alwaysApply: true
+---
+# Architectural Governance
+Refer to @architectural-manual.md for all structural decisions.
+
+## Key Constraints:
+- **Tooling:** For LangChain and LangGraph logic, always follow the patterns in `Docs by LangChain` MCP Tool. For Playwright, always refer back to @Docs Playwright.
+- **Environment Variables** Never read from .env. 
+
+
+## Verification:
+Before providing code, confirm that you have verified this code follows the @architectural-manual.md standards.
+
+

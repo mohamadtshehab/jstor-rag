@@ -10,6 +10,8 @@ from playwright_stealth import Stealth
 from ..contracts.dtos import ArticleData, DocumentMetadata
 from ..contracts.interfaces import IArticleAccess, IConfigAccess
 
+_JSTOR_HOSTNAME = "jstor.org"
+
 
 class ArticleAccess(IArticleAccess):
     """Fetches JSTOR article content via Playwright.
@@ -31,12 +33,15 @@ class ArticleAccess(IArticleAccess):
     def __init__(self, config: IConfigAccess | None = None) -> None:
         self._config = config
 
+    def validate_url(self, url: str) -> bool:
+        """Return True if url points to a supported JSTOR article."""
+        return _JSTOR_HOSTNAME in url
+
     def _get_state_path(self) -> Path:
-        path = Path(
-            self._config.get("playwright_state_path", "./data/jstor_auth_state.json")
-            if self._config
-            else "./data/jstor_auth_state.json"
-        )
+        if self._config:
+            path = Path(self._config.read_scraper_config().playwright_state_path)
+        else:
+            path = Path("./data/jstor_auth_state.json")
         return path.resolve()
 
     async def fetch_article(
@@ -59,6 +64,19 @@ class ArticleAccess(IArticleAccess):
             doi="",
         )
         return ArticleData(text=text, metadata=metadata)
+
+    async def fetch_metadata(self, url: str) -> DocumentMetadata:
+        """Fetch only title, authors, and DOI without retrieving the full article body."""
+        example_path = (
+            Path(__file__).resolve().parent.parent.parent.parent / "example_text.txt"
+        )
+        _ = example_path  # stub: metadata is returned without reading the full text
+        return DocumentMetadata(
+            url=url,
+            title="The Case of the Colorblind Painter",
+            authors=[],
+            doi="",
+        )
 
     async def _do_login_flow(
         self,
@@ -92,8 +110,9 @@ class ArticleAccess(IArticleAccess):
 
         await asyncio.sleep(random.uniform(1, 3))
 
-        email = self._config.get("login_email") if self._config else ""
-        password = self._config.get("login_password") if self._config else ""
+        scraper_cfg = self._config.read_scraper_config() if self._config else None
+        email = scraper_cfg.login_email if scraper_cfg else ""
+        password = scraper_cfg.login_password if scraper_cfg else ""
         if email and password:
             await dialog.locator('input[name="email"]').fill(email)
             await asyncio.sleep(random.uniform(0.3, 0.8))

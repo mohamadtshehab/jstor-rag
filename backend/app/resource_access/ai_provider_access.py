@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
 
 from google import genai
 from groq import AsyncGroq, RateLimitError
@@ -9,8 +8,7 @@ from groq import AsyncGroq, RateLimitError
 from langchain_core.language_models import BaseChatModel
 from langchain_groq import ChatGroq
 from ..contracts.dtos import CompletionRequest, EmbeddingRequest
-from ..contracts.interfaces import IAIProviderAccess
-from .config_access import ConfigAccess
+from ..contracts.interfaces import IAIProviderAccess, IConfigAccess
 
 _MAX_RETRIES_429 = 3
 _RETRY_DELAY_SECONDS = 6
@@ -22,13 +20,13 @@ class AIProviderAccess(IAIProviderAccess):
     Embeddings: Gemini (google-genai). Generation: Groq (llama-3.1-8b-instant).
     """
 
-    def __init__(self, config: ConfigAccess) -> None:
-        settings = config.settings
-        self._gemini = genai.Client(api_key=settings.gemini_api_key)
-        self._groq = AsyncGroq(api_key=settings.groq_api_key)
-        self._embedding_model = settings.embedding_model
-        self._generation_model = settings.generation_model
-        self._groq_api_key = settings.groq_api_key
+    def __init__(self, config: IConfigAccess) -> None:
+        ai = config.read_ai_config()
+        self._gemini = genai.Client(api_key=ai.gemini_api_key)
+        self._groq = AsyncGroq(api_key=ai.groq_api_key)
+        self._embedding_model = ai.embedding_model
+        self._generation_model = ai.generation_model
+        self._groq_api_key = ai.groq_api_key
 
     def get_chat_model(self) -> BaseChatModel:
         return ChatGroq(
@@ -48,13 +46,15 @@ class AIProviderAccess(IAIProviderAccess):
         vals = embeddings[0].values
         return list(vals) if vals is not None else []
 
-    async def fetch_vectors_batch(self, texts: list[str]) -> list[list[float]]:
+    async def fetch_vectors_batch(
+        self, requests: list[EmbeddingRequest]
+    ) -> list[list[float]]:
         """Embed multiple texts in one API call. Reduces rate limit pressure."""
-        if not texts:
+        if not requests:
             return []
         response = await self._gemini.aio.models.embed_content(
             model=self._embedding_model,
-            contents=texts,
+            contents=[r.text for r in requests],
         )
         embeddings = response.embeddings or []
         result: list[list[float]] = []
@@ -64,7 +64,7 @@ class AIProviderAccess(IAIProviderAccess):
         return result
 
     async def fetch_completion(self, request: CompletionRequest) -> str:
-        messages: list[dict[str, Any]] = []
+        messages: list[dict] = []
         if request.system_instruction:
             messages.append({"role": "system", "content": request.system_instruction})
         messages.append({"role": "user", "content": request.prompt})
