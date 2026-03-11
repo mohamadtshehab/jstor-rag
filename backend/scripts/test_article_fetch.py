@@ -42,7 +42,6 @@ async def main() -> None:
         url,
         headless=True,
         do_login_flow=do_login,
-        keep_browser_open=False,
     )
     print("--- Metadata ---")
     print(f"Title: {result.metadata.title}")

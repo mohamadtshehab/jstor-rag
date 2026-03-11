@@ -81,7 +81,6 @@ class ArticleAccess(IArticleAccess):
         headless: bool = False,
         do_login_flow: bool = True,
         login_dialog_wait_seconds: float = 0.0,
-        keep_browser_open: bool = False,
     ) -> ArticleData:
         scraper_cfg = self._config.read_scraper_config() if self._config else None
         channel = (scraper_cfg.playwright_channel if scraper_cfg else "") or "chrome"
@@ -154,9 +153,6 @@ class ArticleAccess(IArticleAccess):
 
                 state_path.parent.mkdir(parents=True, exist_ok=True)
                 await context.storage_state(path=str(state_path))
-
-                if keep_browser_open:
-                    input("\nBrowser is open. Press Enter to close...")
 
             finally:
                 await context.close()
