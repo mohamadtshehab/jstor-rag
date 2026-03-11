@@ -74,18 +74,16 @@ class ArticleAccess(IArticleAccess):
     def validate_url(self, url: str) -> bool:
         return _JSTOR_HOSTNAME in url
 
-    async def fetch_article(
-        self,
-        url: str,
-        *,
-        headless: bool = False,
-        do_login_flow: bool = True,
-        login_dialog_wait_seconds: float = 0.0,
-    ) -> ArticleData:
+    async def fetch_article(self, url: str) -> ArticleData:
         scraper_cfg = self._config.read_scraper_config() if self._config else None
         channel = (scraper_cfg.playwright_channel if scraper_cfg else "") or "chrome"
         user_data_dir = (
             scraper_cfg.playwright_user_data_dir if scraper_cfg else "./data/playwright_user"
+        )
+        headless = scraper_cfg.headless if scraper_cfg else True
+        do_login_flow = scraper_cfg.do_login_flow if scraper_cfg else False
+        login_dialog_wait_seconds = (
+            scraper_cfg.login_dialog_wait_seconds if scraper_cfg else 0.0
         )
         state_path = self._get_state_path()
 

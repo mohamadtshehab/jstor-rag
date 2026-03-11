@@ -91,6 +91,9 @@ class ScraperConfig(BaseModel):
     playwright_user_data_dir: str
     login_email: str
     login_password: str
+    headless: bool = True
+    do_login_flow: bool = False
+    login_dialog_wait_seconds: float = 0.0
 
 
 class ServerConfig(BaseModel):

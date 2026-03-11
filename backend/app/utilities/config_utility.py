@@ -14,6 +14,9 @@ class _Settings(BaseSettings):
     playwright_channel: str = ""
     playwright_state_path: str = "./data/jstor_auth_state.json"
     playwright_user_data_dir: str = "./data/playwright_user"
+    playwright_headless: bool = True
+    playwright_do_login_flow: bool = False
+    playwright_login_dialog_wait_seconds: float = 0.0
     login_email: str = Field(
         default="",
         validation_alias=AliasChoices("JSTOR_LOGIN_EMAIL", "JSTOR_RAG_LOGIN_EMAIL"),
@@ -58,6 +61,9 @@ class ConfigUtility(IConfigUtility):
             playwright_user_data_dir=s.playwright_user_data_dir,
             login_email=s.login_email,
             login_password=s.login_password,
+            headless=s.playwright_headless,
+            do_login_flow=s.playwright_do_login_flow,
+            login_dialog_wait_seconds=s.playwright_login_dialog_wait_seconds,
         )
 
     def read_server_config(self) -> ServerConfig:

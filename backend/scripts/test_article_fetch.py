@@ -15,6 +15,7 @@ with --login use the cache and skip the wait.
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 from pathlib import Path
 
@@ -31,18 +32,18 @@ async def main() -> None:
     url = args[0] if args else "https://www.jstor.org/"
     do_login = "--login" in flags
 
+    # Set env before ConfigUtility() — it reads at init
+    os.environ["JSTOR_RAG_PLAYWRIGHT_HEADLESS"] = "true"
+    os.environ["JSTOR_RAG_PLAYWRIGHT_DO_LOGIN_FLOW"] = "true" if do_login else "false"
+
     config = ConfigUtility()
     access = ArticleAccess(config=config)
     print(f"Fetching: {url}")
     if do_login:
-        print("Login flow: will open jstor.org, click Log in, fill credentials. Browser stays open until you press Enter.\n")
+        print("Login flow: will open jstor.org, click Log in, fill credentials.\n")
     else:
-        print("Browser window will stay open until you press Enter.\n")
-    result = await access.fetch_article(
-        url,
-        headless=True,
-        do_login_flow=do_login,
-    )
+        print("Headless mode.\n")
+    result = await access.fetch_article(url)
     print("--- Metadata ---")
     print(f"Title: {result.metadata.title}")
     print(f"Authors: {result.metadata.authors}")
