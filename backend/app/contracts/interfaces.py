@@ -126,7 +126,10 @@ class IAIProviderAccess(ABC):
     async def fetch_completion(self, request: CompletionRequest) -> str: ...
 
 
-class IConfigAccess(ABC):
+# ── Utilities ────────────────────────────────────────────────────────────────
+
+
+class IConfigUtility(ABC):
     @abstractmethod
     def read_ai_config(self) -> AIProviderConfig: ...
 
@@ -138,9 +141,6 @@ class IConfigAccess(ABC):
 
     @abstractmethod
     def read_server_config(self) -> ServerConfig: ...
-
-
-# ── Utilities ────────────────────────────────────────────────────────────────
 
 
 class INotificationUtility(ABC):

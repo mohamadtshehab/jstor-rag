@@ -22,7 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.resource_access.article_access import ArticleAccess
-from app.resource_access.config_access import ConfigAccess
+from app.utilities.config_utility import ConfigUtility
 
 
 async def main() -> None:
@@ -31,7 +31,7 @@ async def main() -> None:
     url = args[0] if args else "https://www.jstor.org/"
     do_login = "--login" in flags
 
-    config = ConfigAccess()
+    config = ConfigUtility()
     access = ArticleAccess(config=config)
     print(f"Fetching: {url}")
     if do_login:

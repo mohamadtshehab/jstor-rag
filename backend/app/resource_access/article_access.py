@@ -9,7 +9,7 @@ from playwright.async_api import BrowserContext, BrowserType, Cookie, Page, Play
 from playwright_stealth import Stealth
 
 from ..contracts.dtos import ArticleData, DocumentMetadata
-from ..contracts.interfaces import IArticleAccess, IConfigAccess
+from ..contracts.interfaces import IArticleAccess, IConfigUtility
 
 _JSTOR_HOSTNAME = "jstor.org"
 _JSTOR_HOME = "https://www.jstor.org"
@@ -62,11 +62,11 @@ class ArticleAccess(IArticleAccess):
 
     _JSTOR_SELECTORS = {
         "content_spans": "span.markedContent > span[role='presentation']",
-        "login_dialog": "div.modal__overlay div[role='dialog']",
+        "login_dialog": "mfe-access-workflow-pharos-modal[name='AccessWorkflowModal']",
         "paywall": ".paywall, .restricted-access, [data-testid='paywall']",
     }
 
-    def __init__(self, config: IConfigAccess | None = None) -> None:
+    def __init__(self, config: IConfigUtility | None = None) -> None:
         self._config = config
 
     # ── Public interface ──────────────────────────────────────────────────────
@@ -78,8 +78,8 @@ class ArticleAccess(IArticleAccess):
         self,
         url: str,
         *,
-        headless: bool = True,
-        do_login_flow: bool = False,
+        headless: bool = False,
+        do_login_flow: bool = True,
         login_dialog_wait_seconds: float = 0.0,
         keep_browser_open: bool = False,
     ) -> ArticleData:
@@ -101,6 +101,7 @@ class ArticleAccess(IArticleAccess):
                     )
 
                 await self._warm_up_navigation(page, url)
+                await self._handle_turnaway(page)
 
                 captcha = await self._detect_captcha(page)
                 if captcha:
@@ -213,6 +214,28 @@ class ArticleAccess(IArticleAccess):
         await page.goto(article_url, wait_until="domcontentloaded", timeout=60_000)
         await self._human_pause(1.0, 2.0)
 
+    async def _handle_turnaway(self, page: Page) -> bool:
+        """Detect and bypass JSTOR turnaway (free-view click-through) pages.
+
+        If present, extracts the read-now href from the access button and
+        navigates directly to it, avoiding Shadow DOM interaction.
+        Returns True if a turnaway was detected and handled.
+        """
+        try:
+            btn = page.locator('[data-qa="turnaway-read-online"]')
+            if await btn.count() == 0:
+                return False
+            href = await btn.get_attribute("href")
+            if href:
+                target = href if href.startswith("http") else f"{_JSTOR_HOME}{href}"
+                await page.goto(target, wait_until="domcontentloaded", timeout=60_000)
+            else:
+                await btn.click()
+            await self._human_pause(1.0, 2.0)
+            return True
+        except Exception:
+            return False
+
     async def _detect_captcha(self, page: Page) -> str | None:
         """Return the first matched CAPTCHA selector, or None if no challenge is present."""
         for selector in _CAPTCHA_SELECTORS:
@@ -306,14 +329,13 @@ class ArticleAccess(IArticleAccess):
         scraper_cfg = self._config.read_scraper_config() if self._config else None
         email = scraper_cfg.login_email if scraper_cfg else ""
         password = scraper_cfg.login_password if scraper_cfg else ""
-
         if email and password:
-            await dialog.locator('input[name="email"]').fill(email)
+            await dialog.locator('mfe-access-workflow-pharos-text-input[name="email"] >> input').fill(email)
             await self._human_pause(0.3, 0.8)
-            await dialog.locator('input[name="password"]').fill(password)
+            await dialog.locator('mfe-access-workflow-pharos-text-input[name="password"] >> input').fill(password)
             await self._human_pause(0.5, 1.5)
             submit_btn = (
-                dialog.locator('[data-qa="login-button"] >> button')
+                dialog.locator('mfe-access-workflow-pharos-button[type="submit"]')
                 .filter(visible=True)
                 .first
             )
@@ -328,7 +350,13 @@ class ArticleAccess(IArticleAccess):
     # ── Content extraction ────────────────────────────────────────────────────
 
     async def _extract_content(self, page: Page) -> str:
-        spans = page.locator(self._JSTOR_SELECTORS["content_spans"])
+        primary = self._JSTOR_SELECTORS["content_spans"]
+        fallback = "div.textLayer > span[role='presentation']"
+
+        spans = page.locator(primary)
+        if await spans.count() == 0:
+            spans = page.locator(fallback)
+
         texts = await spans.all_text_contents()
         return "\n".join(t.strip() for t in texts if t.strip())
 

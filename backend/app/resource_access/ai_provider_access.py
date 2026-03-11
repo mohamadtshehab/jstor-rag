@@ -8,7 +8,7 @@ from groq import AsyncGroq, RateLimitError
 from langchain_core.language_models import BaseChatModel
 from langchain_groq import ChatGroq
 from ..contracts.dtos import CompletionRequest, EmbeddingRequest
-from ..contracts.interfaces import IAIProviderAccess, IConfigAccess
+from ..contracts.interfaces import IAIProviderAccess, IConfigUtility
 
 _MAX_RETRIES_429 = 3
 _RETRY_DELAY_SECONDS = 6
@@ -20,7 +20,7 @@ class AIProviderAccess(IAIProviderAccess):
     Embeddings: Gemini (google-genai). Generation: Groq (llama-3.1-8b-instant).
     """
 
-    def __init__(self, config: IConfigAccess) -> None:
+    def __init__(self, config: IConfigUtility) -> None:
         ai = config.read_ai_config()
         self._gemini = genai.Client(api_key=ai.gemini_api_key)
         self._groq = AsyncGroq(api_key=ai.groq_api_key)

@@ -15,15 +15,15 @@ from .managers.ingestion_manager import IngestionManager
 from .managers.query_manager import QueryManager
 from .resource_access.ai_provider_access import AIProviderAccess
 from .resource_access.article_access import ArticleAccess
-from .resource_access.config_access import ConfigAccess
+from .utilities.config_utility import ConfigUtility
 from .resource_access.knowledge_store_access import KnowledgeStoreAccess
 from .resource_access.session_access import SessionAccess
 from .utilities.notification_utility import NotificationUtility
 
 
 @lru_cache
-def get_config() -> ConfigAccess:
-    return ConfigAccess()
+def get_config() -> ConfigUtility:
+    return ConfigUtility()
 
 
 @lru_cache
