@@ -15,7 +15,7 @@ class _Settings(BaseSettings):
     playwright_state_path: str = "./data/jstor_auth_state.json"
     playwright_user_data_dir: str = "./data/playwright_user"
     playwright_headless: bool = True
-    playwright_do_login_flow: bool = False
+    playwright_do_login_flow: bool = True
     playwright_login_dialog_wait_seconds: float = 0.0
     login_email: str = Field(
         default="",

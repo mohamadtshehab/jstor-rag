@@ -61,7 +61,10 @@ class ArticleAccess(IArticleAccess):
     """
 
     _JSTOR_SELECTORS = {
-        "content_spans": "span.markedContent > span[role='presentation']",
+        "content_spans": [
+            "span.markedContent > span[role='presentation']",
+            "div.textLayer > span[role='presentation']",
+        ],
         "login_dialog": "mfe-access-workflow-pharos-modal[name='AccessWorkflowModal']",
         "paywall": ".paywall, .restricted-access, [data-testid='paywall']",
     }
@@ -127,21 +130,18 @@ class ArticleAccess(IArticleAccess):
                             pw, True, channel, user_data_dir, state_path
                         )
                         await self._warm_up_navigation(page, url)
-                else:
-                    # No CAPTCHA — wait for the JS viewer to finish rendering.
-                    # domcontentloaded fires before JSTOR's viewer mounts, so
-                    # scrollHeight would be 0 and _scroll_viewer_to_end would be a no-op
-                    # without this gate.
-                    await page.wait_for_selector(
-                        "div.page span.markedContent", state="attached", timeout=30_000
-                    )
+                        await self._handle_turnaway(page)
+
+                # Wait for the JS viewer to finish rendering in all paths.
+                # domcontentloaded fires before JSTOR's viewer mounts, so
+                # scrollHeight would be 0 and _scroll_viewer_to_end would be a no-op
+                # without this gate.
+                await self._wait_for_viewer(page)
 
                 if not do_login_flow and not await self._is_logged_in(page):
                     await self._do_login_flow(page, context, 0.0, state_path)
                     await page.goto(url, wait_until="domcontentloaded", timeout=60_000)
-                    await page.wait_for_selector(
-                        "div.page span.markedContent", state="attached", timeout=30_000
-                    )
+                    await self._wait_for_viewer(page)
                     await self._human_pause(2.0, 4.0)
 
                 await self._scroll_viewer_to_end(page)
@@ -242,11 +242,7 @@ class ArticleAccess(IArticleAccess):
 
     async def _wait_for_captcha_solve(self, page: Page) -> None:
         """Block until the article content appears, indicating the CAPTCHA was solved."""
-        await page.wait_for_selector(
-            "div.page span.markedContent",
-            state="attached",
-            timeout=_CAPTCHA_SOLVE_TIMEOUT_MS,
-        )
+        await self._wait_for_viewer(page, timeout=_CAPTCHA_SOLVE_TIMEOUT_MS)
 
     async def _is_logged_in(self, page: Page) -> bool:
         """Heuristic: check for the presence of the login button to detect logged-out state."""
@@ -344,15 +340,13 @@ class ArticleAccess(IArticleAccess):
     # ── Content extraction ────────────────────────────────────────────────────
 
     async def _extract_content(self, page: Page) -> str:
-        primary = self._JSTOR_SELECTORS["content_spans"]
-        fallback = "div.textLayer > span[role='presentation']"
+        for selector in self._JSTOR_SELECTORS["content_spans"]:
+            spans = page.locator(selector)
+            if await spans.count() > 0:
+                texts = await spans.all_text_contents()
+                return "\n".join(t.strip() for t in texts if t.strip())
 
-        spans = page.locator(primary)
-        if await spans.count() == 0:
-            spans = page.locator(fallback)
-
-        texts = await spans.all_text_contents()
-        return "\n".join(t.strip() for t in texts if t.strip())
+        raise ValueError("No content spans found")
 
     async def _extract_title(self, page: Page) -> str:
         raise NotImplementedError
@@ -362,6 +356,17 @@ class ArticleAccess(IArticleAccess):
 
     async def _extract_doi(self, page: Page) -> str:
         raise NotImplementedError
+
+    async def _wait_for_viewer(self, page: Page, timeout: int = 30_000) -> None:
+        """Wait until any known viewer layer has attached to the DOM."""
+        errors: list[Exception] = []
+        for selector in self._JSTOR_SELECTORS["content_spans"]:
+            try:
+                await page.wait_for_selector(selector, state="attached", timeout=timeout)
+                return
+            except Exception as exc:
+                errors.append(exc)
+        raise errors[0]
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
