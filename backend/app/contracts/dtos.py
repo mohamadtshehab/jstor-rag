@@ -75,8 +75,6 @@ class QueryPayload(BaseModel):
 
 
 class AIProviderConfig(BaseModel):
-    gemini_api_key: str
-    groq_api_key: str
     embedding_model: str
     generation_model: str
 

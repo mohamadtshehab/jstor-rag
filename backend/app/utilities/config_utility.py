@@ -25,8 +25,8 @@ class _Settings(BaseSettings):
         default="",
         validation_alias=AliasChoices("JSTOR_LOGIN_PASSWORD", "JSTOR_RAG_LOGIN_PASSWORD"),
     )
-    embedding_model: str = "models/gemini-embedding-001"
-    generation_model: str = "llama-3.1-8b-instant"
+    embedding_model: str = "nomic-embed-text"
+    generation_model: str = "phi"
     host: str = "0.0.0.0"
     port: int = 8000
 
