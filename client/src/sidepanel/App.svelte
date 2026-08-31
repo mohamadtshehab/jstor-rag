@@ -8,6 +8,7 @@
   let ingesting = $state(false);
   let error = $state("");
   let messages = $state<Array<{ role: "user" | "assistant"; content: string }>>([]);
+  let ws: WebSocket | null = $state(null);
 
   async function handleIngest() {
     ingesting = true;
@@ -45,11 +46,13 @@
   }
 
   async function handleQuery(question: string) {
+    // Add user message and a placeholder assistant message for streaming deltas
     messages = [...messages, { role: "user", content: question }];
+    messages = [...messages, { role: "assistant", content: "" }];
 
     try {
       const response = await chrome.runtime.sendMessage({
-        type: "QUERY_ARTICLE",
+        type: "STREAM_QUERY",
         payload: { question },
       });
 
@@ -58,8 +61,8 @@
         return;
       }
 
-      const answer = response.payload as AnswerResponse;
-      messages = [...messages, { role: "assistant", content: answer.answer_text }];
+      // STREAM_STARTED returned; actual content arrives via websocket events
+      return;
     } catch (e) {
       messages = [...messages, { role: "assistant", content: `Error: ${(e as Error).message}` }];
     }
@@ -70,6 +73,31 @@
       documentId = (data.documentId as string | undefined) ?? null;
       articleTitle = (data.articleTitle as string | undefined) ?? "";
     });
+
+    // create websocket connection to receive streaming deltas
+    if (!ws) {
+      // Dynamic import to use the shared helper
+      import("../shared/api").then(({ createWebSocket }) => {
+        ws = createWebSocket((event, data) => {
+          if (event !== "StreamingResponse") return;
+          const docId = (data.document_id as string) || null;
+          const delta = (data.delta as string) || "";
+          const done = Boolean(data.done);
+
+          // Append delta to last assistant message
+          const lastIdx = messages.length - 1;
+          if (lastIdx >= 0 && messages[lastIdx].role === "assistant") {
+            messages[lastIdx] = { ...messages[lastIdx], content: messages[lastIdx].content + delta };
+          } else {
+            messages = [...messages, { role: "assistant", content: delta }];
+          }
+
+          if (done) {
+            // Optionally mark completion; no-op for now
+          }
+        });
+      });
+    }
   });
 </script>
 

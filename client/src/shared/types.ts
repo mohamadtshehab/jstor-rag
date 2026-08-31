@@ -13,9 +13,11 @@ export interface IngestionResult {
 export type MessageType =
   | "INGEST_ARTICLE"
   | "QUERY_ARTICLE"
+  | "STREAM_QUERY"
   | "INGESTION_COMPLETE"
   | "QUERY_RESULT"
   | "ERROR"
+  | "STREAM_STARTED"
   | "OPEN_SIDEPANEL";
 
 export interface ExtensionMessage {

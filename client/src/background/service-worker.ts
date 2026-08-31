@@ -3,7 +3,7 @@ import type {
   ExtensionMessage,
   IngestionResult,
 } from "../shared/types";
-import { ingestArticle, queryArticle } from "../shared/api";
+import { ingestArticle, queryArticle, streamQuery } from "../shared/api";
 
 let currentDocumentId: string | null = null;
 
@@ -56,6 +56,24 @@ async function handleMessage(
 
       const answer: AnswerResponse = await queryArticle(docId, question);
       return { type: "QUERY_RESULT", payload: answer };
+    }
+
+    case "STREAM_QUERY": {
+      const { question } = msg.payload as { question: string };
+      const stored = await chrome.storage.session.get("documentId");
+      const docId: string | undefined =
+        currentDocumentId || (stored.documentId as string | undefined);
+
+      if (!docId) {
+        return {
+          type: "ERROR",
+          payload: "No article ingested. Open an article on JSTOR first.",
+        };
+      }
+
+      // Fire-and-forget; server will publish deltas over websocket
+      streamQuery(docId, question).catch(console.error);
+      return { type: "STREAM_STARTED" };
     }
 
     default:

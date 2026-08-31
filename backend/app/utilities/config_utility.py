@@ -27,6 +27,8 @@ class _Settings(BaseSettings):
     )
     embedding_model: str = "nomic-embed-text"
     generation_model: str = "phi"
+    ollama_api_base: str = "http://localhost:11434"
+    ollama_api_key: str = ""
     host: str = "0.0.0.0"
     port: int = 8000
 
@@ -44,10 +46,10 @@ class ConfigUtility(IConfigUtility):
     def read_ai_config(self) -> AIProviderConfig:
         s = self._settings
         return AIProviderConfig(
-            gemini_api_key=s.gemini_api_key,
-            groq_api_key=s.groq_api_key,
             embedding_model=s.embedding_model,
             generation_model=s.generation_model,
+            ollama_api_base=s.ollama_api_base,
+            ollama_api_key=s.ollama_api_key,
         )
 
     def read_store_config(self) -> StoreConfig:

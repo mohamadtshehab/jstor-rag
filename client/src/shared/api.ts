@@ -29,6 +29,14 @@ export async function queryArticle(
   });
 }
 
+export async function streamQuery(
+  documentId: string,
+  question: string
+): Promise<void> {
+  // Fire-and-forget: server will publish incremental deltas via websocket
+  await post("/query/stream", { document_id: documentId, question });
+}
+
 export function createWebSocket(
   onMessage: (event: string, data: Record<string, unknown>) => void
 ): WebSocket {

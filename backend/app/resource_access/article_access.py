@@ -64,6 +64,7 @@ class ArticleAccess(IArticleAccess):
         "content_spans": [
             "span.markedContent > span[role='presentation']",
             "div.textLayer > span[role='presentation']",
+            "span[role=\"presentation\"]",
         ],
         "login_dialog": "mfe-access-workflow-pharos-modal[name='AccessWorkflowModal']",
         "paywall": ".paywall, .restricted-access, [data-testid='paywall']",
@@ -135,8 +136,25 @@ class ArticleAccess(IArticleAccess):
                 # Wait for the JS viewer to finish rendering in all paths.
                 # domcontentloaded fires before JSTOR's viewer mounts, so
                 # scrollHeight would be 0 and _scroll_viewer_to_end would be a no-op
-                # without this gate.
-                await self._wait_for_viewer(page)
+                # without this gate. If the viewer doesn't appear it may be because
+                # the site redirected to a login/paywall flow; try a login fallback
+                # and then retry waiting for the viewer before failing.
+                try:
+                    await self._wait_for_viewer(page)
+                except Exception as first_exc:
+                    # If viewer didn't appear, attempt interactive/login flow
+                    if not do_login_flow:
+                        try:
+                            await self._do_login_flow(page, context, login_dialog_wait_seconds, state_path)
+                            # reload the article and wait again for the viewer
+                            await page.goto(url, wait_until="domcontentloaded", timeout=60_000)
+                            await self._wait_for_viewer(page, timeout=60_000)
+                        except Exception:
+                            # If fallback also fails, re-raise the original error for visibility
+                            raise first_exc
+                    else:
+                        # Already configured to run login flow; re-raise
+                        raise
 
                 if not do_login_flow and not await self._is_logged_in(page):
                     await self._do_login_flow(page, context, 0.0, state_path)

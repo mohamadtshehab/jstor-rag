@@ -125,6 +125,9 @@ class IAIProviderAccess(ABC):
     @abstractmethod
     async def fetch_completion(self, request: CompletionRequest) -> str: ...
 
+    @abstractmethod
+    async def fetch_completion_stream(self, request: CompletionRequest): ...
+
 
 # ── Utilities ────────────────────────────────────────────────────────────────
 

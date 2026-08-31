@@ -66,7 +66,29 @@ class IngestionManager(IIngestionManager):
             )
             vectors.extend(batch_vecs)
 
-        await self._store.store_chunks(document_id, chunks, vectors)
+        # Filter out any chunks with empty embeddings (some providers may return
+        # empty arrays for certain inputs). Chroma requires non-empty embeddings.
+        filtered_chunks: list[DocumentChunk] = []
+        filtered_vectors: list[list[float]] = []
+        for chunk, vec in zip(chunks, vectors):
+            if vec:
+                filtered_chunks.append(chunk)
+                filtered_vectors.append(vec)
+
+        if not filtered_chunks:
+            # Nothing to store — return an 'empty' ingestion result.
+            await self._notify.publish(
+                "DocumentReady",
+                {"document_id": document_id, "total_chunks": 0},
+            )
+            return IngestionResult(
+                document_id=document_id,
+                total_chunks=0,
+                status="empty",
+                article_title=article.metadata.title,
+            )
+
+        await self._store.store_chunks(document_id, filtered_chunks, filtered_vectors)
 
         await self._notify.publish(
             "DocumentReady",

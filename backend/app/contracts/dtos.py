@@ -77,6 +77,9 @@ class QueryPayload(BaseModel):
 class AIProviderConfig(BaseModel):
     embedding_model: str
     generation_model: str
+    # Ollama settings (optional). Example: http://localhost:11434
+    ollama_api_base: str | None = None
+    ollama_api_key: str | None = None
 
 
 class StoreConfig(BaseModel):
