@@ -15,6 +15,6 @@ async def ingest_document(
     manager: IngestionManager = Depends(get_ingestion_manager),
 ) -> IngestionResult:
     if not payload.url.strip():
-        raise HTTPException(status_code=422, detail="URL is required.")
+        return await manager.ingest_document("")
 
     return await manager.ingest_document(payload.url)

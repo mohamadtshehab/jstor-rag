@@ -72,7 +72,7 @@ class AIProviderAccess(IAIProviderAccess):
 
     async def fetch_vector(self, request: EmbeddingRequest) -> list[float]:
         payload = {"model": self._embedding_model, "input": request.text}
-        data = await self._post("/api/embeddings", payload)
+        data = await self._post("/api/embed", payload)
         # Accept several possible response shapes to be resilient across Ollama versions
         emb: list[float] = []
         if isinstance(data, dict):
@@ -92,7 +92,7 @@ class AIProviderAccess(IAIProviderAccess):
                 # Retry using 'prompt' as some Ollama models expect that field name.
                 try:
                     alt_payload = {"model": self._embedding_model, "prompt": request.text}
-                    alt_data = await self._post("/api/embeddings", alt_payload)
+                    alt_data = await self._post("/api/embed", alt_payload)
                     # attempt extraction from alt_data
                     alt_emb: list[float] = []
                     if isinstance(alt_data, dict):
@@ -124,7 +124,7 @@ class AIProviderAccess(IAIProviderAccess):
         if not requests:
             return []
         payload = {"model": self._embedding_model, "input": [r.text for r in requests]}
-        data = await self._post("/api/embeddings", payload)
+        data = await self._post("/api/embed", payload)
         out: list[list[float]] = []
         if isinstance(data, dict):
             if "embeddings" in data:
@@ -147,7 +147,7 @@ class AIProviderAccess(IAIProviderAccess):
                 # Retry with 'prompt' as key for batch requests
                 try:
                     alt_payload = {"model": self._embedding_model, "prompt": [r.text for r in requests]}
-                    alt_data = await self._post("/api/embeddings", alt_payload)
+                    alt_data = await self._post("/api/embed", alt_payload)
                     if isinstance(alt_data, dict):
                         if "embeddings" in alt_data:
                             for e in alt_data["embeddings"]:

@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from pathlib import Path
 
-from ..contracts.dtos import IngestionResult
+from ..contracts.dtos import ArticleData, DocumentMetadata, IngestionResult
 from ..contracts.interfaces import (
     IArticleAccess,
     IAIProviderAccess,
@@ -39,7 +40,7 @@ class IngestionManager(IIngestionManager):
         self._notify = notification
 
     async def ingest_document(self, url: str) -> IngestionResult:
-        article = await self._article.fetch_article(url)
+        article = await self._load_ingestion_source(url)
         document_id = str(uuid.uuid4())
 
         chunks = self._parsing.create_chunks(
@@ -101,6 +102,20 @@ class IngestionManager(IIngestionManager):
             status="ready",
             article_title=article.metadata.title,
         )
+
+    async def _load_ingestion_source(self, url: str) -> ArticleData:
+        if not url.strip() or url.strip().lower() in {"test", "example", "example_text", "example_text.txt"}:
+            example_path = Path(__file__).resolve().parents[3] / "example_text.txt"
+            if example_path.exists():
+                return ArticleData(
+                    text=example_path.read_text(encoding="utf-8"),
+                    metadata=DocumentMetadata(
+                        url="test-text",
+                        title="The Case of the Colorblind Painter",
+                    ),
+                )
+
+        return await self._article.fetch_article(url)
 
     async def delete_document(self, document_id: str) -> None:
         await self._store.delete(document_id)

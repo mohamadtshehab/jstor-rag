@@ -18,8 +18,8 @@ _SECTION_PATTERN = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 
-_MAX_CHUNK_SIZE = 1500
-_CHUNK_OVERLAP = 200
+_MAX_CHUNK_SIZE = 30
+_CHUNK_OVERLAP = 1
 
 
 class ParsingEngine(IParsingEngine):
